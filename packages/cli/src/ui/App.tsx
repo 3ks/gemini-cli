@@ -84,6 +84,7 @@ import ansiEscapes from 'ansi-escapes';
 import { OverflowProvider } from './contexts/OverflowContext.js';
 import { ShowMoreLines } from './components/ShowMoreLines.js';
 import { PrivacyNotice } from './privacy/PrivacyNotice.js';
+import { usePromptCompletion } from './hooks/usePromptCompletion.js';
 
 const CTRL_EXIT_PROMPT_DURATION_MS = 1000;
 
@@ -161,6 +162,8 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
     useState<boolean>(false);
   const [userTier, setUserTier] = useState<UserTierId | undefined>(undefined);
   const [activeFile, setActiveFile] = useState<ActiveFile | undefined>();
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   useEffect(() => {
     const unsubscribe = ideContext.subscribeToActiveFile(setActiveFile);
@@ -433,6 +436,22 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
     shellModeActive,
   });
 
+  const handleSuggestionsUpdate = useCallback((newSuggestions: string[]) => {
+    setSuggestions(newSuggestions);
+    setShowSuggestions(newSuggestions.length > 0);
+  }, []);
+
+  const geminiClient = config.getGeminiClient();
+
+  // Use the new prompt completion hook
+  usePromptCompletion(
+    geminiClient,
+    buffer.text,
+    500, // 500ms delay
+    handleSuggestionsUpdate,
+    buffer.text.length > 5
+  );
+
   const handleExit = useCallback(
     (
       pressedOnce: boolean,
@@ -539,6 +558,7 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
 
   const handleFinalSubmit = useCallback(
     (submittedValue: string) => {
+      setShowSuggestions(false);
       const trimmedValue = submittedValue.trim();
       if (trimmedValue.length > 0) {
         submitQuery(trimmedValue);
@@ -654,7 +674,6 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
   }, [settings.merged.contextFileName]);
 
   const initialPrompt = useMemo(() => config.getQuestion(), [config]);
-  const geminiClient = config.getGeminiClient();
 
   useEffect(() => {
     if (
@@ -943,6 +962,35 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
                   setShellModeActive={setShellModeActive}
                   focus={isFocused}
                 />
+              )}
+              {showSuggestions && suggestions.length > 0 && (
+                <Box 
+                  flexDirection="column" 
+                  borderStyle="round" 
+                  paddingX={1} 
+                  marginTop={1}
+                  borderColor={Colors.AccentBlue}
+                >
+                  <Text color={Colors.AccentBlue} bold>
+                    💡 Prompt Suggestion:
+                  </Text>
+                    {suggestions.map((suggestion, index) => (
+                      <Box
+                        key={index}
+                        marginLeft={2}
+                        marginBottom={index === suggestions.length - 1 ? 0 : 1}
+                      >
+                        <Text color={Colors.Comment}>
+                          {index + 1}. {suggestion}
+                        </Text>
+                      </Box>
+                    ))}
+                  <Box marginTop={1}>
+                    <Text color={Colors.Comment}>
+                      Tips: You can copy the above suggestions as your prompt words.
+                    </Text>
+                  </Box>
+                </Box>
               )}
             </>
           )}
